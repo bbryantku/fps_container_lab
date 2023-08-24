@@ -1,0 +1,159 @@
+version: "3.9"
+
+services:
+  gameserver:
+    cap_add: 
+      - NET_ADMIN #required to change container ip tables
+    environment:
+      - COMPOSE_PROJECT_NAME=research_game
+    container_name: gameserver
+    image: local/gameserver:1.0
+    hostname: gameserver
+    logging:
+      driver: "syslog"
+      options:
+        syslog-address: "tcp://10.5.0.253:514"
+        syslog-format: "rfc3164"
+        tag: "gameserver"
+    ports:
+      - 26950:26950  #exposes host port 26950 for external coms into server
+      - 26950:26950/udp
+    volumes:
+      - ../bin/gameserver:/opt/gameserver/bin
+      - ../config/gameserver/serverSettings.json:/opt/gameserver/serverSettings.json
+      - ../config/gameserver/gameserver_start.sh:/opt/gameserver/gameserver_start.sh
+      - ../logs/gameserver:/opt/gameserver/logs
+      - ../pcaps:/opt/gameserver/pcaps
+    networks:
+      gamenetwork2:
+        ipv4_address: 10.5.0.3       
+    #command: sh -c "/opt/gameserver/bin/Server.x86_64 2>&1 /opt/gameserver/logs/terminal_logs.txt"
+    #command: sh -c "/opt/gameserver/gameserver_start.sh"
+    command: /opt/gameserver/gameserver_start.sh
+    depends_on: 
+      - syslogserver
+      - gamerouter
+
+  gameclient:
+    environment:
+      - COMPOSE_PROJECT_NAME=research_game
+    container_name: gameclient01
+    image: local/gameclient:1.0
+    hostname: gameclient01
+    logging:
+      driver: "syslog"
+      options:
+        syslog-address: "tcp://10.5.0.253:514"
+        syslog-format: "rfc3164"
+        tag: "gameclient01"
+    #ports:
+    #  - 26950:26950
+    volumes:
+      - ../bin/gameclient:/opt/gameclient/bin
+      - ../config/gameclient01/clientSettings.json:/opt/gameclient/clientSettings.json
+      - ../config/gameclient01/gameclient_start.sh:/opt/gameclient/gameclient_start.sh
+      - ../logs/gameclient01:/opt/gameclient/logs
+      - ../pcaps:/opt/gameclient/pcaps
+    #command: sh -c "/opt/gameclient/bin/Headless_Client.x86_64"
+    networks:
+      gamenetwork2:
+        ipv4_address: 10.5.0.4
+    #command: sh -c "/opt/gameclient/bin/Headless_Client.x86_64 2>&1 /opt/gameclient/logs/terminal_logs.txt"
+    command: /opt/gameclient/gameclient_start.sh
+    depends_on: 
+      - syslogserver
+      - gamerouter
+
+  gamerouter:
+    privileged: true
+    environment:
+      - COMPOSE_PROJECT_NAME=research_game
+    container_name: gamerouter01
+    image: local/vyos:1.3.0
+    hostname: vyos01
+    logging:
+      driver: "syslog"
+      options:
+        syslog-address: "tcp://10.5.0.253:514"
+        syslog-format: "rfc3164"
+        tag: "gameserver"
+    volumes:
+      - ../config/gamerouter01:/opt/vyatta/etc/config/
+      - ../pcaps:/opt/vyatta/pcaps
+    #command: sh -c "/sbin/init"
+    command: /sbin/init
+    networks:
+      gamenetwork:
+        ipv4_address: 10.6.0.2
+      gamenetwork2:
+        ipv4_address: 10.5.0.2
+        #link_local_ips: 
+        #  - "10.5.0.2"
+    depends_on: 
+      - syslogserver
+
+  syslogserver:
+    #privileged: true  #this will fix most problems
+    cap_add: #capabilities required to run syslog service
+    #  - ALL
+      - NET_BIND_SERVICE
+      - NET_BROADCAST
+      - NET_RAW
+      - DAC_READ_SEARCH
+      - DAC_OVERRIDE
+      - CHOWN
+      - SYSLOG
+    environment:
+      - COMPOSE_PROJECT_NAME=research_game
+    container_name: syslogserver
+    image: local/syslogserver:1.0
+    hostname: syslogserver
+    #logging:
+    #  driver: "syslog"
+    #  options:
+    #    syslog-address: "tcp://10.5.0.253:514"
+    #    syslog-format: "rfc5424"
+    #    tag: "syslogserver"
+    ports:
+      - 514:514
+      - 601:601
+    volumes:
+      - ../config/syslogserver/syslog-ng:/etc/syslog-ng
+      - ../config/syslogserver/temp:/tmp
+      - ../logs/syslog:/var/log/remotelogs
+    #  - ../logs/gameclient01:/opt/gameclient/logs
+    #  - ../pcaps:/opt/gameclient/pcaps
+    #command: sh -c "tail -f /dev/null" #this just keeps the container alive
+    #command: sh -c "/sbin/syslog-ng && tail -f /var/log/syslog"
+    command: sh -c "/sbin/syslog-ng && tail -f /dev/null"
+    #command: sh -c "service syslog-ng start"
+    #command: sh -c "/sbin/syslog-ng"
+    #command: "/etc/init.d/syslog-ng start"
+    dns: 8.8.8.8 #custom dns ip address
+    networks:
+      gamenetwork2:
+        ipv4_address: 10.5.0.253
+        
+
+
+#Ref: https://docs.docker.com/compose/networking/
+#Ref: https://docs.docker.com/network/network-tutorial-standalone/
+networks:
+  gamenetwork:            #used to reach to outside world
+    name: research_game_gamenetwork
+    #internal: true
+    driver: bridge
+    attachable: true
+    ipam:
+      config:
+        - subnet: 10.6.0.0/16
+          gateway: 10.6.0.1
+  gamenetwork2:        #used for internal container to container connectivity
+    name: research_game_gamenetwork2
+    #internal: true
+    attachable: true
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.5.0.0/16
+          gateway: 10.5.0.1

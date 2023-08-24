@@ -1,0 +1,28 @@
+#Useful reference: https://docs.docker.com/compose/compose-file/build/ 
+version: "3.9"
+
+services:
+  gameserver:
+    container_name: gameserver      #<- convenient name to reference container when running
+    build:                          #<- Structure pointing to instructions to create image from base
+      context: .                    #<- directory to search for dockerfile . means same dir as this file
+      dockerfile: Dockerfile-Server #<- customn name for dockerfile
+    hostname: gameserver            #<- hostname used within container OS
+    image: local/gameserver:1.0     #<- custom tag for image
+
+  gameclient:
+    container_name: gameclient
+    build:
+      context: .
+      dockerfile: Dockerfile-Headless_Client
+    hostname: gameclient
+    image: local/gameclient:1.0
+
+  syslog:
+    container_name: syslogserver
+    build:
+      context: .
+      dockerfile: Dockerfile-Syslog
+    hostname: syslogserver
+    image: local/syslogserver:1.0
+    

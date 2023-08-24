@@ -1,0 +1,133 @@
+# How to build the .iso image
+#ref: https://wirelesscommtech.com/building-vyos-because-we-can/
+#ref: https://docs.vyos.io/en/equuleus/contributing/build-vyos.html
+
+# How to configure the container
+#ref: https://docs.google.com/document/u/1/d/1TUUVGLzetAX7_BIO6qtKDCC89j40eHa7bZrGiM5a3j8/mobilebasic
+#ref: https://docs.vyos.io/en/latest/installation/virtual/docker.html 
+
+##note, you must use a Debian10 as Docker host OS to build the container. It is fine to use a virtualmachine for this purpose
+## squashfs tools must be installed
+# apt install squashfs-tools
+
+##docker must also be installed
+##ref https://www.digitalocean.com/community/tutorials/how-to-install-and-use-docker-on-debian-10
+##inside debain host
+# sudo apt update
+# sudo apt install apt-transport-https ca-certificates curl gnupg2 software-properties-common
+# curl -fsSL https://download.docker.com/linux/debian/gpg | sudo apt-key add -
+# sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/debian $(lsb_release -cs) stable"
+# sudo apt update
+# apt-cache policy docker-ce
+# sudo apt install docker-ce
+# sudo systemctl status docker
+
+
+#############################################
+# Building the .iso image
+#############################################
+
+
+#pull the docker build image for the desired version. equuleus = 1.3.0
+docker pull docker pull vyos/vyos-build:equuleus
+
+#get files from github
+git clone -b equuleus --single-branch https://github.com/vyos/vyos-build
+
+#start and enter the container. this also mounts the github repo cloned above
+docker run --rm -it --privileged -v $(pwd):/vyos -w /vyos vyos/vyos-build:equuleus bash
+
+#configure and build the image
+cd vyos-build                   #this is the directory cloned from github
+sudo ./configure --architecture amd64 --build-by "bryant@ku.edu"  #you can change build-by to whatever you want
+
+#the iso image will be located in the "build directory" within the container and build host (debian10)
+# if this is built in a vm, you may use scp to transfer outside of the virtual environment if desired
+
+#####################################################
+# Building a vyos docker container from a .iso image
+#####################################################
+
+# assuming successful creation of .iso image in steps above
+# resultant iso image name when procdure was written is: vyos-1.3-rolling-202307211720-amd64.iso
+# copy the .iso file to a directory on the Debian 10 host. In this example I will use the /home/<username>/Documents directory
+
+#switch to root to create directory and mount .iso file
+su root
+mkdir -p rootfs
+mount -o loop vyos-1.3-rolling-202307211720-amd64.iso rootfs
+
+#create directory and upnack squashfs filesystem as root
+mkdir -p unsquashfs
+unsquashfs -f -d unsquashfs/ rootfs/live/filesystem.squashfs
+
+#fix locales in configuration file
+sed -i 's/^LANG=.*$/LANG=C.UTF-8/' unsquashfs/etc/default/locale
+
+
+
+# create symbolic link to the configuration
+ln -s /opt/vyatta/etc/config unsquashfs/config
+
+# copy debian modules into unsquash file system
+# without this step, the container will only run on Debian Docker hosts
+cp -R /lib/modules/* unsquashfs/lib/modules/
+
+# create the docker image . you may change the tag to whatever you want
+# tar -C unsquashfs -c . | docker import - <custom tag goes here> --change 'CMD ["/sbin/init"]'
+tar -C unsquashfs -c . | docker import - local/vyos:1.3.0-big --change 'CMD ["/sbin/init"]'
+
+
+####################################################
+######## Optional to decrease size of container
+#####################################################
+
+#optional not doing for now
+#remove unnecessary files to decrease size of docker image
+rm -rf unsquashfs/boot/*.img
+rm -rf unsquashfs/boot/*vyos*
+rm -rf unsquashfs/boot/vmlinuz
+rm -rf unsquashfs/lib/firmware/
+rm -rf unsquashfs/usr/lib/x86_64-linux-gnu/libwireshark.so* #removing this will remove tshark capability
+rm -rf unsquashfs/lib/modules/*amd64-vyos
+
+#create container minus files above (approx 300mb)
+tar -C unsquashfs -c . | docker import - local/vyos:1.3.0-small --change 'CMD ["/sbin/init"]'
+
+###########################################
+###### Exporting image as local archive
+###########################################
+
+#this step is optional, but allows for easy storage and import of the docker container in the future
+# as root
+# docker save <image repo and tag from docker images -a > < whatever you want to call this>.tar
+docker save local/vyos:1.3.0-big > vyos_1_3_0-big.tar
+docker save local/vyos:1.3.0-small > vyos_1_3_0-small.tar
+
+docker save local/vyos:1.3.0 > vyos_1_3_0.tar
+
+
+##############################################
+###### Running the container
+##############################################
+# docker run -d --rm --name vyos --privileged < image repo : tag > /sbin/init
+docker run -d --rm --name vyos --privileged local/vyos:1.3.0-small /sbin/init
+docker run -d --rm --name vyos --privileged local/vyos:1.3.0 /sbin/init
+
+docker exec -it vyos su - vyos
+
+##############################################
+###### Persistence config between boots ######
+##############################################
+
+# The vyatta container will check 2 files upon boot. These may be mounted during container startup
+# the files on the vyatta container are containe in directory: /opt/vyatta/etc/config
+# the configuration is stored in /opt/vyatta/etc/config/config.boot
+# Another hidden file to archive the past 2 commands in: /opt/vyatta/etc/config/.vyatta_config
+# The recommended way to do this is via docker-compose orchestration to mount this directory to a 
+# directory on the host system such as: " ./vyos1/config/:/opt/vyatta/etc/config/ "
+
+
+
+
+

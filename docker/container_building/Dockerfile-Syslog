@@ -1,0 +1,40 @@
+#using debain12 as base
+FROM debian:bookworm-20230703-slim AS base
+
+#Reference for which packages to install
+#ref: https://www.syslog-ng.com/technical-documents/doc/syslog-ng-open-source-edition/3.30/administration-guide/12
+
+# install management tools for listing processes in container
+#RUN add-apt-repository -y ppa:wireshark-dev/stable
+RUN apt-get update && apt-get install -y procps iproute2 net-tools iputils-ping iputils-tracepath mtr openssl sudo tshark syslog-ng-core syslog-ng-scl && rm -rf /var/lib/apt/lists/*
+
+## copy syslog config into container
+COPY syslog-ng_config/syslog-ng.conf /etc/syslog-ng/
+COPY syslog-ng_config/syslog-ng /etc/default/
+RUN chown root:adm /etc/syslog-ng && chown root:adm /etc/default/syslog-ng
+
+RUN update-rc.d syslog-ng defaults
+RUN mkdir -p /var/log/remotelogs
+#RUN service syslog-ng start
+#ENTRYPOINT ["service", "syslog-ng", "start"]
+
+#change permissions on the syslog log files and service binary
+#RUN chown -R 1000:1000 /var/log
+#RUN chown 1000:1000 /sbin/syslog-ng
+#RUN chown -R 1000:1000 /etc/syslog-ng
+#RUN chown 1000:1000 /etc/default/syslog-ng
+#RUN chown -R 1000:1000 /var/lib/syslog-ng
+
+#create non-root account to run container
+#ENV NEWUSER=testuser
+#ENV PASSWORD=password
+#RUN groupadd -g 1000 ${NEWUSER}
+#RUN useradd -u 1000 -ms /bin/bash -g 1000 -p $(openssl passwd -1 $PASSWORD) ${NEWUSER}
+
+#Note, the following line adds the user account to the sudoers file... this allows them to escalate privileges to root
+#RUN usermod -aG sudo ${NEWUSER}
+#RUN usermod -aG adm ${NEWUSER}
+
+
+# change user to non-root account 
+#USER ${NEWUSER}
