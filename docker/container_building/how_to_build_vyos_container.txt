@@ -6,7 +6,8 @@
 #ref: https://docs.google.com/document/u/1/d/1TUUVGLzetAX7_BIO6qtKDCC89j40eHa7bZrGiM5a3j8/mobilebasic
 #ref: https://docs.vyos.io/en/latest/installation/virtual/docker.html 
 
-##note, you must use a Debian10 as Docker host OS to build the container. It is fine to use a virtualmachine for this purpose
+##note, you must use a Debian10 (or higher, most recent build used Debian12) as Docker host OS to build the container. 
+#It is fine to use a virtual machine for this purpose
 ## squashfs tools must be installed
 # apt install squashfs-tools
 
@@ -27,6 +28,8 @@
 # Building the .iso image
 #############################################
 
+# All actions below are performed within a Debian based operating system, or virtual machine.
+
 
 #pull the docker build image for the desired version. equuleus = 1.3.0
 docker pull docker pull vyos/vyos-build:equuleus
@@ -39,9 +42,11 @@ docker run --rm -it --privileged -v $(pwd):/vyos -w /vyos vyos/vyos-build:equule
 
 #configure and build the image
 cd vyos-build                   #this is the directory cloned from github
+
+#The following line creates the image, and adds "build-by" creator metadata which you may customize as you see fit
 sudo ./configure --architecture amd64 --build-by "bryant@ku.edu"  #you can change build-by to whatever you want
 
-#the iso image will be located in the "build directory" within the container and build host (debian10)
+#the iso image will be located in the "build directory" within the container and build host (debian10 or higher)
 # if this is built in a vm, you may use scp to transfer outside of the virtual environment if desired
 
 #####################################################
@@ -74,6 +79,9 @@ ln -s /opt/vyatta/etc/config unsquashfs/config
 cp -R /lib/modules/* unsquashfs/lib/modules/
 
 # create the docker image . you may change the tag to whatever you want
+# This loads the container into memory on the host (Debian) machine
+# Multiple versions may be configured and loaded in this manner for future export
+# Smaller versions will be created in the next section called "Optional to decrease size of container"
 # tar -C unsquashfs -c . | docker import - <custom tag goes here> --change 'CMD ["/sbin/init"]'
 tar -C unsquashfs -c . | docker import - local/vyos:1.3.0-big --change 'CMD ["/sbin/init"]'
 
