@@ -1,0 +1,5 @@
+#How to build a vyatta router container
+https://docs.google.com/document/u/1/d/1TUUVGLzetAX7_BIO6qtKDCC89j40eHa7bZrGiM5a3j8/mobilebasic
+
+#How to get reliable interface names in docker containers
+https://weyl.io/2022/01/docker-container-network-interface-ordering/
